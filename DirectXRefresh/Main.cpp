@@ -1,6 +1,8 @@
 #include "BoilerPlate.h"
 #include "DXMainAppOne.h"
 
+DXMainAppOne* appPtr = nullptr;
+
 LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
 
@@ -15,6 +17,7 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPara
             return 0;
 
         case WM_PAINT:
+            appPtr->Render();
             return 0;
 
         case WM_DESTROY:
@@ -84,6 +87,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 {
     HWND m_hwnd = nullptr;
     DXMainAppOne app(1280,720);
+    appPtr = &app;
     OpenWindow(m_hwnd, hInstance, nCmdShow, 1280, 720, &app);
 	return 0;
 }

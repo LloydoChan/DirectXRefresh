@@ -12,8 +12,12 @@ class DXMainAppOne
 public:
 	DXMainAppOne(UINT width, UINT height);
 	void Initialize(HWND hWnd);
+	void Render();
 
 private:
+	void BuildList();
+	void SyncFrame();
+
 	ComPtr<IDXGISwapChain3> mSwapChain;
 	ComPtr<ID3D12Device> mDevice;
 	ComPtr<ID3D12Resource> mRenderTargets[2];

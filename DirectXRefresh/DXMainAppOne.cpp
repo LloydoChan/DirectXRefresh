@@ -103,3 +103,47 @@ void DXMainAppOne::Initialize(HWND hWnd)
 		}
 	}
 }
+
+void DXMainAppOne::Render()
+{
+	BuildList();
+	ID3D12CommandList* commandList[] = { mCommandList.Get() };
+	mCommandQueue->ExecuteCommandLists(_countof(commandList), commandList);
+	ThrowIfFailed(mSwapChain->Present(1, 0));
+	SyncFrame();
+}
+
+
+void DXMainAppOne::BuildList()
+{
+	ThrowIfFailed(mCommandAllocator->Reset());
+	ThrowIfFailed(mCommandList->Reset(mCommandAllocator.Get(), mPipelineState.Get()));
+
+	CD3DX12_RESOURCE_BARRIER before = CD3DX12_RESOURCE_BARRIER::Transition(mRenderTargets[mFrameIndex].Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+	CD3DX12_RESOURCE_BARRIER after = CD3DX12_RESOURCE_BARRIER::Transition(mRenderTargets[mFrameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+
+	mCommandList->ResourceBarrier(1, &before);
+
+	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(mRtvHeap->GetCPUDescriptorHandleForHeapStart(), mFrameIndex, mRtvDescriptorSize);
+	const float clearColor[] = { 1.0f, 0.7f, 0.6f, 1.0f };
+	mCommandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+
+	mCommandList->ResourceBarrier(1, &after);
+	ThrowIfFailed(mCommandList->Close());
+}
+
+void DXMainAppOne::SyncFrame()
+{
+	const UINT64 fence = mFenceValue;
+	ThrowIfFailed(mCommandQueue->Signal(mFence.Get(), fence));
+	mFenceValue++;
+
+	// Wait until the previous frame is finished.
+	if (mFence->GetCompletedValue() < fence)
+	{
+		ThrowIfFailed(mFence->SetEventOnCompletion(fence, mFenceEvent));
+		WaitForSingleObject(mFenceEvent, INFINITE);
+	}
+
+	mFrameIndex = mSwapChain->GetCurrentBackBufferIndex();
+}
