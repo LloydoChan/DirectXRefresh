@@ -1,4 +1,5 @@
-#include <Windows.h>
+#include "BoilerPlate.h"
+#include "DXMainAppOne.h"
 
 LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
@@ -13,6 +14,9 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPara
             }
             return 0;
 
+        case WM_PAINT:
+            return 0;
+
         case WM_DESTROY:
             PostQuitMessage(0);
             return 0;
@@ -22,7 +26,7 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPara
     return DefWindowProc(hWnd, message, wParam, lParam);
 }
 
-int OpenWindow(HWND m_hwnd, HINSTANCE hInstance, int nCmdShow, UINT width, UINT height)
+int OpenWindow(HWND m_hwnd, HINSTANCE hInstance, int nCmdShow, UINT width, UINT height, DXMainAppOne* app)
 {
     // Parse the command line parameters
     int argc;
@@ -54,7 +58,9 @@ int OpenWindow(HWND m_hwnd, HINSTANCE hInstance, int nCmdShow, UINT width, UINT 
         nullptr,        // We have no parent window.
         nullptr,        // We aren't using menus.
         hInstance,
-        nullptr);
+        app);
+
+    app->Initialize(m_hwnd);
 
     ShowWindow(m_hwnd, nCmdShow);
 
@@ -77,6 +83,7 @@ int OpenWindow(HWND m_hwnd, HINSTANCE hInstance, int nCmdShow, UINT width, UINT 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
 {
     HWND m_hwnd = nullptr;
-    OpenWindow(m_hwnd, hInstance, nCmdShow, 1280, 720);
+    DXMainAppOne app(1280,720);
+    OpenWindow(m_hwnd, hInstance, nCmdShow, 1280, 720, &app);
 	return 0;
 }
