@@ -9,4 +9,7 @@
     <ClInclude Include="BoilerPlate.h" />
     <ClInclude Include="DXMainAppOne.h" />
   </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="Shaders.hlsl" />
+  </ItemGroup>
 </Project>

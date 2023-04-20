@@ -1,11 +1,21 @@
 #include "DXMainAppOne.h"
 
 #include <dxgi1_4.h>
-#include "d3dx12.h"
+#include <d3dcompiler.h>
 
-DXMainAppOne::DXMainAppOne(UINT width, UINT height) : mWidth(width), mHeight(height), mFrameIndex(0), mRtvDescriptorSize(0)
+
+DXMainAppOne::DXMainAppOne(UINT width, UINT height) : mWidth(width), 
+mHeight(height), 
+mFrameIndex(0), 
+mViewport(0.f, 0.f, static_cast<float>(width), static_cast<float>(height)), 
+mScissorRect(0, 0, static_cast<LONG>(width), static_cast<LONG>(height)),
+mRtvDescriptorSize(0)
 {
 	mAspectRatio = static_cast<float>(width) / static_cast<float>(height);
+
+	WCHAR assetsPath[512];
+	GetAssetsPath(assetsPath, _countof(assetsPath));
+	mAssetsPath = assetsPath;
 };
 
 void DXMainAppOne::Initialize(HWND hWnd)
@@ -83,8 +93,11 @@ void DXMainAppOne::Initialize(HWND hWnd)
 
 	ThrowIfFailed(mDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&mCommandAllocator)));
 
+	LoadShaders();
 	// Create the command list.
-	ThrowIfFailed(mDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, mCommandAllocator.Get(), nullptr, IID_PPV_ARGS(&mCommandList)));
+	ThrowIfFailed(mDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, mCommandAllocator.Get(), mPipelineState.Get(), IID_PPV_ARGS(&mCommandList)));
+	LoadTriangleData();
+
 
 	// Command lists are created in the recording state, but there is nothing
 	// to record yet. The main loop expects it to be closed, so close it now.
@@ -102,6 +115,83 @@ void DXMainAppOne::Initialize(HWND hWnd)
 			ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
 		}
 	}
+
+	
+}
+
+void DXMainAppOne::LoadShaders()
+{
+	CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
+	rootSignatureDesc.Init(0, nullptr, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+	ComPtr<ID3DBlob> signature;
+	ComPtr<ID3DBlob> error;
+	ThrowIfFailed(D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error));
+	ThrowIfFailed(mDevice->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&mRootSignature)));
+
+	ComPtr<ID3D10Blob> vertexShader;
+	ComPtr<ID3D10Blob> pixelShader;
+	LPCWSTR vertexShaderName = L"shaders.hlsl";
+	ThrowIfFailed(D3DCompileFromFile(std::wstring(mAssetsPath + vertexShaderName).c_str(), nullptr, nullptr, "VSMain", "vs_5_0", D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION, 0, &vertexShader, nullptr));
+	ThrowIfFailed(D3DCompileFromFile(std::wstring(mAssetsPath + vertexShaderName).c_str(), nullptr, nullptr, "PSMain", "ps_5_0", D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION, 0, &pixelShader, nullptr));
+
+	D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
+	{
+		{"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+		{"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+	};
+
+	// Describe and create the graphics pipeline state object (PSO).
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+	psoDesc.InputLayout = { inputElementDescs, _countof(inputElementDescs) };
+	psoDesc.pRootSignature = mRootSignature.Get();
+	psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShader.Get());
+	psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShader.Get());
+	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+	psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+	psoDesc.DepthStencilState.DepthEnable = FALSE;
+	psoDesc.DepthStencilState.StencilEnable = FALSE;
+	psoDesc.SampleMask = UINT_MAX;
+	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	psoDesc.NumRenderTargets = 1;
+	psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	psoDesc.SampleDesc.Count = 1;
+	ThrowIfFailed(mDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mPipelineState)));
+}
+
+void DXMainAppOne::LoadTriangleData()
+{
+	Vertex triangleVertices[] =
+	{
+		{ { 0.0f, 0.25f * mAspectRatio, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
+		{ { 0.25f, -0.25f * mAspectRatio, 0.0f }, { 1.0f, 1.0f, 0.0f, 1.0f } },
+		{ { -0.25f, -0.25f * mAspectRatio, 0.0f }, { 1.0f, 0.0f, 1.0f, 1.0f } }
+	};
+
+	const UINT vertexBufferSize = sizeof(triangleVertices);
+
+	CD3DX12_HEAP_PROPERTIES props(D3D12_HEAP_TYPE_UPLOAD);
+	CD3DX12_RESOURCE_DESC buff = CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize);
+
+	ThrowIfFailed(mDevice->CreateCommittedResource(
+		&props,
+		D3D12_HEAP_FLAG_NONE,
+		&buff,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&mVertexBuffer)));
+
+	// Copy the triangle data to the vertex buffer.
+	UINT8* pVertexDataBegin;
+	CD3DX12_RANGE readRange(0, 0);        // We do not intend to read from this resource on the CPU.
+	ThrowIfFailed(mVertexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pVertexDataBegin)));
+	memcpy(pVertexDataBegin, triangleVertices, sizeof(triangleVertices));
+	mVertexBuffer->Unmap(0, nullptr);
+
+	// Initialize the vertex buffer view.
+	mVertexBufferView.BufferLocation = mVertexBuffer->GetGPUVirtualAddress();
+	mVertexBufferView.StrideInBytes = sizeof(Vertex);
+	mVertexBufferView.SizeInBytes = vertexBufferSize;
 }
 
 void DXMainAppOne::Render()
@@ -119,14 +209,23 @@ void DXMainAppOne::BuildList()
 	ThrowIfFailed(mCommandAllocator->Reset());
 	ThrowIfFailed(mCommandList->Reset(mCommandAllocator.Get(), mPipelineState.Get()));
 
+	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
+	mCommandList->RSSetViewports(1, &mViewport);
+	mCommandList->RSSetScissorRects(1, &mScissorRect);
+
 	CD3DX12_RESOURCE_BARRIER before = CD3DX12_RESOURCE_BARRIER::Transition(mRenderTargets[mFrameIndex].Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
 	CD3DX12_RESOURCE_BARRIER after = CD3DX12_RESOURCE_BARRIER::Transition(mRenderTargets[mFrameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
 
 	mCommandList->ResourceBarrier(1, &before);
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(mRtvHeap->GetCPUDescriptorHandleForHeapStart(), mFrameIndex, mRtvDescriptorSize);
+	mCommandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
+
 	const float clearColor[] = { 1.0f, 0.7f, 0.6f, 1.0f };
 	mCommandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+	mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	mCommandList->IASetVertexBuffers(0, 1, &mVertexBufferView);
+	mCommandList->DrawInstanced(3, 1, 0, 0);
 
 	mCommandList->ResourceBarrier(1, &after);
 	ThrowIfFailed(mCommandList->Close());
